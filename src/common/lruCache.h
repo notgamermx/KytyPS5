@@ -49,7 +49,7 @@ public:
 
 	template <typename Function>
 	void ForEachItemBelow(Tick tick, Function&& function) {
-		constexpr bool ReturnsBool = std::is_same_v<std::invoke_result_t<Function, Object>, bool>;
+		constexpr bool ReturnsBool = std::is_same_v<std::invoke_result_t<Function&, Object&>, bool>;
 		for (auto* item = m_first; item != nullptr;) {
 			if (item->tick > tick) {
 				return;

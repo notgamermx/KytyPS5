@@ -103,6 +103,57 @@ void TestTouchReordersAndSkips() {
         "touching a middle item did not move it to the end");
 }
 
+void TestMutableReferenceCallbacks() {
+  Common::LeastRecentlyUsedCache<std::string, uint64_t> cache;
+  (void)cache.Insert("a", 10);
+  (void)cache.Insert("b", 20);
+  (void)cache.Insert("c", 30);
+
+  cache.ForEachItemBelow(20, [](std::string &object) { object += "!"; });
+  auto order = Collect(cache, UINT64_MAX);
+  Check(order == std::vector<std::string>{"a!", "b!", "c"},
+        "void reference callback did not update the eligible cached objects");
+
+  cache.ForEachItemBelow(UINT64_MAX, [](std::string &object) {
+    object += "?";
+    return true;
+  });
+  order = Collect(cache, UINT64_MAX);
+  Check(order == std::vector<std::string>{"a!?", "b!", "c"},
+        "boolean reference callback did not stop after updating the first object");
+}
+
+struct ReferenceStopCallback {
+  std::vector<std::string> &visited;
+
+  bool operator()(std::string &object) & {
+    visited.push_back(object);
+    return true;
+  }
+
+  void operator()(std::string &&) && {
+    Check(false, "callback was invoked with a temporary object or as a temporary");
+  }
+};
+
+void TestLvalueCallbackOverload() {
+  Common::LeastRecentlyUsedCache<std::string, uint64_t> cache;
+  (void)cache.Insert("a", 10);
+  (void)cache.Insert("b", 20);
+  (void)cache.Insert("c", 30);
+
+  std::vector<std::string> visited;
+  ReferenceStopCallback callback{visited};
+  cache.ForEachItemBelow(UINT64_MAX, callback);
+  Check(visited == std::vector<std::string>{"a"},
+        "lvalue callback's boolean return was ignored");
+
+  visited.clear();
+  cache.ForEachItemBelow(UINT64_MAX, ReferenceStopCallback{visited});
+  Check(visited == std::vector<std::string>{"a"},
+        "temporary callback's lvalue overload did not stop the walk");
+}
+
 void TestFreeAndIdReuse() {
   Common::LeastRecentlyUsedCache<std::string, uint64_t> cache;
   const auto a = cache.Insert("a", 10);
@@ -150,6 +201,8 @@ int main() {
   TestInsertAndVisitOrder();
   TestEarlyExitCallback();
   TestTouchReordersAndSkips();
+  TestMutableReferenceCallbacks();
+  TestLvalueCallbackOverload();
   TestFreeAndIdReuse();
   std::puts("LruCacheTests: all cases passed");
   return 0;
